@@ -6,6 +6,9 @@ html { scroll-behavior: smooth; }
 body { @apply bg-cream text-espresso font-sans antialiased; }
 h1, h2, h3 { @apply font-serif; }
 h1, h2 { font-weight: 500; }
+h3 { font-weight: 600; }
+em, .italic { font-style: normal !important; }
+blockquote { font-weight: 500; }
 section[id] { scroll-margin-top: 72px; }
 header a[href='#home'] { font-family: var(--font-serif), serif; font-size: 1.2rem; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase; line-height: 1; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
