@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html { scroll-behavior: smooth; }
+body { @apply bg-cream text-espresso font-sans antialiased; }
+h1, h2, h3 { @apply font-serif; }
+section[id] { scroll-margin-top: 72px; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+@layer components {
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm tracking-wide transition duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mauve; }
+  .btn-primary { @apply bg-espresso text-cream hover:bg-mauve hover:-translate-y-0.5 hover:shadow-soft; }
+  .btn-ghost { @apply border border-espresso/30 text-espresso hover:bg-blush/60; }
+  .eyebrow { @apply font-serif italic text-rose text-xl; }
+  .h2 { @apply font-serif text-4xl md:text-5xl leading-tight; }
+  .field { @apply w-full rounded-xl border border-espresso/20 bg-white/80 px-4 py-3 text-sm focus:border-mauve focus:outline-none focus:ring-2 focus:ring-blush; }
+  .card { @apply rounded-2xl border border-espresso/10 bg-white/70 shadow-soft; }
+  .wrap { @apply mx-auto max-w-6xl px-5; }
+  .sec { @apply py-20 md:py-28; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  * { transition: none !important; animation: none !important; }
+}
