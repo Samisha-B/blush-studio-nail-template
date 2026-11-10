@@ -6,7 +6,7 @@ export default function About() {
   return (
     <section id='about' className='sec'>
       <div className='wrap grid items-center gap-12 md:grid-cols-2'>
-        <Img src={a.image} alt={a.imageAlt} className='aspect-[4/5] w-full rounded-3xl shadow-soft' />
+        <Img src={a.image} alt={a.imageAlt} eager className='aspect-[4/5] w-full rounded-3xl shadow-soft' />
         <div>
           <p className='eyebrow'>{a.eyebrow}</p>
           <h2 className='h2 mt-2'>{a.title}</h2>

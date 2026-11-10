@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
-import { Cormorant_Garamond, Jost } from 'next/font/google';
+import { Bodoni_Moda, Jost, Pinyon_Script } from 'next/font/google';
 import './globals.css';
 import { site } from '@/config/site';
 
-const serif = Cormorant_Garamond({ subsets: ['latin'], weight: ['400', '500', '600'], style: ['normal', 'italic'], variable: '--font-serif' });
+const serif = Bodoni_Moda({ subsets: ['latin'], style: ['normal', 'italic'], variable: '--font-serif' });
+const script = Pinyon_Script({ subsets: ['latin'], weight: '400', variable: '--font-script' });
 const sans = Jost({ subsets: ['latin'], variable: '--font-sans' });
 
 export const metadata: Metadata = {
@@ -15,7 +16,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang='en' className={`${serif.variable} ${sans.variable}`}>
+    <html lang='en' className={`${serif.variable} ${script.variable} ${sans.variable}`}>
       <body>{children}</body>
     </html>
   );

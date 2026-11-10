@@ -1,6 +1,6 @@
 import { MapPin } from 'lucide-react';
 import { site } from '@/config/site';
-import Img from './Img';
+import HeroSlider from './HeroSlider';
 
 export default function Hero() {
   const h = site.hero;
@@ -17,10 +17,7 @@ export default function Hero() {
           </div>
           <p className='mt-8 flex items-center gap-2 text-sm text-mauve'><MapPin size={16} /> Based in {site.brand.city}</p>
         </div>
-        <div className='relative'>
-          <Img src={h.image} alt={h.imageAlt} className='aspect-[4/5] w-full rounded-t-[999px] rounded-b-3xl shadow-soft' />
-          <div className='card absolute -bottom-4 -left-4 hidden px-5 py-4 font-serif italic md:block'>★ 5.0 · loved by 300+ clients</div>
-        </div>
+        <HeroSlider />
       </div>
     </section>
   );
