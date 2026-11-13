@@ -17,7 +17,7 @@ import Footer from '@/components/Footer';
 export default function Page() {
   const ld = {
     '@context': 'https://schema.org',
-    '@type': 'NailSalon',
+    '@type': 'DaySpa',
     name: site.brand.name,
     description: site.seo.description,
     telephone: site.contact.phone,
