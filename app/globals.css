@@ -14,6 +14,14 @@ header a[href='#home'] { font-family: var(--font-serif), serif; font-size: 1.2re
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
 
+.bh-grid { background-image: linear-gradient(rgba(58,42,37,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(58,42,37,.06) 1px, transparent 1px); background-size: 40px 40px; }
+.bh-ring { position: absolute; width: 0; height: 0; transform-style: preserve-3d; will-change: transform; }
+.bh-card { position: absolute; left: -70px; top: -95px; width: 140px; height: 190px; overflow: hidden; border-radius: 14px; background: #F3DCD6; box-shadow: 0 18px 40px -18px rgba(58,42,37,.5); backface-visibility: hidden; }
+.bh-ph { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; letter-spacing: .2em; text-transform: uppercase; color: #8C6B73; background: linear-gradient(160deg, #F3DCD6, #cfdac8); }
+.bh-figure { position: relative; width: min(46vw, 300px); height: min(80vh, 540px); transform-style: preserve-3d; will-change: transform; }
+.bh-face { position: absolute; inset: 0; backface-visibility: hidden; }
+@media (min-width: 768px) { .bh-card { left: -95px; top: -125px; width: 190px; height: 250px; } }
+
 @layer components {
   .btn { @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm tracking-wide transition duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mauve; }
   .btn-primary { @apply bg-espresso text-cream hover:bg-mauve hover:-translate-y-0.5 hover:shadow-soft; }
