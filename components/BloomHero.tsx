@@ -42,6 +42,7 @@ export default function BloomHero() {
         <div className='absolute inset-0 z-10'>
           <BloomScene progress={progress} auraColor={s.aura} />
         </div>
+        <div className='pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[28%] transition-[background] duration-700' style={{ background: `linear-gradient(to top, ${s.bg[1]} 25%, transparent)` }} />
 
         <div className='pointer-events-none absolute left-6 top-28 z-20 max-w-xs md:left-12'>
           <p className='eyebrow'>Step {String(idx + 1).padStart(2, '0')} / {String(STAGES.length).padStart(2, '0')}</p>
