@@ -30,7 +30,6 @@ function Woman({ progress }: { progress: Progress }) {
     scene.traverse((o) => {
       const m = o as THREE.Mesh;
       if (!m.isMesh) return;
-      m.castShadow = true;
       const mats = Array.isArray(m.material) ? m.material : [m.material];
       mats.forEach((mt) => {
         const sm = mt as THREE.MeshStandardMaterial;
@@ -65,8 +64,8 @@ function Woman({ progress }: { progress: Progress }) {
   });
 
   return (
-    <group ref={group} position={[0, offsetY * 0 - 0.0, 0]}>
-      <group scale={scale} position={[0, offsetY / scale * scale * 0, 0]}>
+    <group position={[0, offsetY, 0]}>
+      <group ref={group} scale={scale}>
         <primitive object={scene} />
       </group>
     </group>
