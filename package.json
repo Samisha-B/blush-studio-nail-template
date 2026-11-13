@@ -1,5 +1,5 @@
 {
-  "name": "blush-studio-nail-template",
+  "name": "bloom-studio",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -8,15 +8,20 @@
     "start": "next start"
   },
   "dependencies": {
+    "@react-three/drei": "^9.109.0",
+    "@react-three/fiber": "^8.16.8",
+    "framer-motion": "^11.11.0",
     "lucide-react": "^0.468.0",
     "next": "14.2.18",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "three": "^0.167.1"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@types/three": "^0.167.1",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.15",

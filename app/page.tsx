@@ -13,6 +13,7 @@ import Contact from '@/components/Contact';
 import Instagram from '@/components/Instagram';
 import FAQ from '@/components/FAQ';
 import Footer from '@/components/Footer';
+import { Marquee, Reveal, ScrollProgress } from '@/components/Motion';
 
 export default function Page() {
   const ld = {
@@ -28,19 +29,21 @@ export default function Page() {
   return (
     <CartProvider>
       <script type='application/ld+json' dangerouslySetInnerHTML={{ __html: JSON.stringify(ld) }} />
+      <ScrollProgress />
       <Nav />
       <main>
         <Hero />
-        <About />
-        <Services />
-        <Gallery />
-        <Booking />
-        {site.shop.enabled && <Shop />}
-        <Reviews />
-        <Why />
-        <Contact />
-        <Instagram />
-        <FAQ />
+        <Marquee />
+        <Reveal><About /></Reveal>
+        <Reveal><Services /></Reveal>
+        <Reveal><Gallery /></Reveal>
+        <Reveal><Booking /></Reveal>
+        {site.shop.enabled && <Reveal><Shop /></Reveal>}
+        <Reveal><Reviews /></Reveal>
+        <Reveal><Why /></Reveal>
+        <Reveal><Contact /></Reveal>
+        <Reveal><Instagram /></Reveal>
+        <Reveal><FAQ /></Reveal>
       </main>
       <Footer />
       {site.shop.enabled && <CartDrawer />}
