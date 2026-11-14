@@ -23,10 +23,13 @@ function makeTexture(label: string, color: string) {
   return t;
 }
 
+// Flat ellipse orbit: wide on X, shallow on Z, so cards never balloon toward the camera.
+const RX = 3.4;
+const RZ = 1.1;
+
 function Card({ index, progress }: { index: number; progress: Progress }) {
   const st = STAGES[index];
   const ref = useRef<THREE.Mesh>(null);
-  const R = 2.9;
   const ang = (index * Math.PI * 2) / N;
   const mat = useMemo(() => {
     const m = new THREE.MeshBasicMaterial({ map: makeTexture(st.product, st.aura), toneMapped: false });
@@ -37,11 +40,11 @@ function Card({ index, progress }: { index: number; progress: Progress }) {
     if (!ref.current) return;
     const f = progress.current * (N - 1);
     const act = Math.max(0, 1 - Math.abs(f - index));
-    ref.current.scale.setScalar(0.8 + 0.3 * act);
-    ref.current.lookAt(state.camera.position.x * 0.5, ref.current.getWorldPosition(new THREE.Vector3()).y, state.camera.position.z);
+    ref.current.scale.setScalar(0.75 + 0.3 * act);
+    ref.current.lookAt(state.camera.position.x * 0.3, ref.current.getWorldPosition(new THREE.Vector3()).y, state.camera.position.z);
   });
   return (
-    <mesh ref={ref} material={mat} position={[Math.sin(ang) * R, 1.2, Math.cos(ang) * R]}>
+    <mesh ref={ref} material={mat} position={[Math.sin(ang) * RX, 1.5, Math.cos(ang) * RZ]}>
       <planeGeometry args={[0.7, 0.93]} />
     </mesh>
   );
@@ -50,7 +53,12 @@ function Card({ index, progress }: { index: number; progress: Progress }) {
 function Ring({ progress }: { progress: Progress }) {
   const ref = useRef<THREE.Group>(null);
   useFrame(() => {
-    if (ref.current) ref.current.rotation.y = -Math.min(1, Math.max(0, progress.current)) * (N - 1) * ((Math.PI * 2) / N) + 0.95;
+    if (ref.current) ref.current.rotation.y = 0;
+    const p = Math.min(1, Math.max(0, progress.current));
+    ref.current?.children.forEach((child, i) => {
+      const a = (i * Math.PI * 2) / N - p * (N - 1) * ((Math.PI * 2) / N) + 1.15;
+      child.position.set(Math.sin(a) * RX, 1.5 + Math.sin(a * 2) * 0.12, Math.cos(a) * RZ);
+    });
   });
   return (
     <group ref={ref}>
@@ -62,20 +70,20 @@ function Ring({ progress }: { progress: Progress }) {
 function Cam() {
   useFrame(({ camera, size }) => {
     const aspect = size.width / size.height;
-    const z = aspect < 0.75 ? 7.5 : aspect < 1.1 ? 6.2 : 5.2;
+    const z = aspect < 0.75 ? 8.5 : aspect < 1.1 ? 7 : 5.6;
     camera.position.z += (z - camera.position.z) * 0.1;
-    camera.position.y = 1.2;
-    camera.lookAt(0, 1.15, 0);
+    camera.position.y = 1.3;
+    camera.lookAt(0, 1.3, 0);
   });
   return null;
 }
 
 export default function BloomOrbit({ progress, auraColor }: { progress: Progress; auraColor: string }) {
   return (
-    <Canvas dpr={[1, 1.75]} camera={{ position: [0, 1.2, 5.2], fov: 30 }} gl={{ alpha: true, antialias: true }}>
+    <Canvas dpr={[1, 1.75]} camera={{ position: [0, 1.3, 5.6], fov: 30 }} gl={{ alpha: true, antialias: true }}>
       <Cam />
       <Ring progress={progress} />
-      <Sparkles count={60} scale={[6, 3.5, 4]} position={[0, 1.4, 0]} size={3} speed={0.4} color={auraColor} />
+      <Sparkles count={60} scale={[7, 3.5, 3]} position={[0, 1.4, 0]} size={3} speed={0.4} color={auraColor} />
     </Canvas>
   );
 }

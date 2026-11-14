@@ -67,7 +67,7 @@ export default function Ambassador({ progress, stage }: { progress: Progress; st
   const top = `color-mix(in srgb, #f4eee4 84%, ${st.aura} 16%)`;
 
   return (
-    <svg viewBox='0 0 600 700' className='h-full w-auto' role='img' aria-label='Bloom Studio skincare ambassador' style={{ filter: `drop-shadow(0 24px 50px ${st.aura}99) brightness(${1 + st.glow * 0.18}) saturate(${1 + st.glow * 0.25})`, transition: 'filter .7s ease' }}>
+    <svg viewBox='40 90 520 610' className='h-full w-auto' role='img' aria-label='Bloom Studio skincare ambassador' style={{ filter: `drop-shadow(0 24px 50px ${st.aura}99) brightness(${1 + st.glow * 0.18}) saturate(${1 + st.glow * 0.25})`, transition: 'filter .7s ease' }}>
       <defs>
         <radialGradient id='amb-face' cx='50%' cy='38%' r='70%'>
           <stop offset='0%' stopColor={SKIN.light} /><stop offset='55%' stopColor={SKIN.base} /><stop offset='100%' stopColor={SKIN.shade} />
@@ -87,20 +87,19 @@ export default function Ambassador({ progress, stage }: { progress: Progress; st
       </defs>
 
       <g ref={body}>
-        <path d='M130 700 C130 560 160 480 240 470 L360 470 C440 480 470 560 470 700 Z' fill={HAIR.base} />
+        <path d='M158 300 C146 170 222 114 300 114 C378 114 454 170 442 300 C454 400 472 520 474 664 L126 664 C128 520 146 400 158 300 Z' fill='url(#amb-hair)' />
         <path d='M70 700 C80 610 150 566 232 548 L368 548 C450 566 520 610 530 700 Z' fill='url(#amb-body)' />
         <path d='M150 700 C150 625 176 588 206 572 L236 576 C262 645 338 645 364 576 L394 572 C424 588 450 625 450 700 Z' fill={top} style={{ transition: 'fill .7s ease' }} />
         <path d='M236 576 C262 645 338 645 364 576' fill='none' stroke='rgba(120,90,60,0.25)' strokeWidth='3' />
         <path d='M232 556 C262 566 280 568 292 566 M368 556 C338 566 320 568 308 566' fill='none' stroke='rgba(90,50,30,0.22)' strokeWidth='4' strokeLinecap='round' />
         <path d='M255 430 L345 430 L350 565 C320 590 280 590 250 565 Z' fill='url(#amb-neck)' />
-        <ellipse cx='300' cy='488' rx='84' ry='24' fill='rgba(60,30,15,0.28)' />
+        <ellipse cx='300' cy='486' rx='78' ry='18' fill='rgba(60,30,15,0.16)' />
       </g>
 
       <g ref={head}>
-        <path d='M158 300 C140 160 220 96 300 96 C380 96 460 160 442 300 C452 420 470 520 486 640 L114 640 C130 520 148 420 158 300 Z' fill='url(#amb-hair)' transform='translate(0 8)' opacity='0.0' />
-        <ellipse cx='178' cy='332' rx='15' ry='27' fill={SKIN.shade} />
-        <ellipse cx='422' cy='332' rx='15' ry='27' fill={SKIN.shade} />
-        <circle cx='178' cy='364' r='6' fill='#f4ebe0' /><circle cx='422' cy='364' r='6' fill='#f4ebe0' />
+        <ellipse cx='180' cy='334' rx='14' ry='26' fill={SKIN.shade} />
+        <ellipse cx='420' cy='334' rx='14' ry='26' fill={SKIN.shade} />
+        <circle cx='180' cy='366' r='6' fill='#f4ebe0' /><circle cx='420' cy='366' r='6' fill='#f4ebe0' />
         <path d='M180 300 C180 212 236 165 300 165 C364 165 420 212 420 300 C420 384 382 456 300 474 C218 456 180 384 180 300 Z' fill='url(#amb-face)' />
         <ellipse cx='228' cy='366' rx='46' ry='34' fill='url(#amb-blush)' opacity={BLUSH[stage] ?? 0.2} style={{ transition: 'opacity .7s ease' }} />
         <ellipse cx='372' cy='366' rx='46' ry='34' fill='url(#amb-blush)' opacity={BLUSH[stage] ?? 0.2} style={{ transition: 'opacity .7s ease' }} />
@@ -145,11 +144,9 @@ export default function Ambassador({ progress, stage }: { progress: Progress; st
         <path d='M262 160 C230 176 204 214 196 262 M338 160 C370 176 396 214 404 262' stroke={HAIR.hi} strokeWidth='2' fill='none' opacity='0.5' />
       </g>
 
-      <g ref={undefined}>
-        <path d='M176 312 C150 400 138 520 146 640 L204 640 C200 540 206 420 220 330 Z' fill='url(#amb-hair)' />
-        <path d='M424 312 C450 400 462 520 454 640 L396 640 C400 540 394 420 380 330 Z' fill='url(#amb-hair)' />
-        <path d='M176 380 C166 460 160 540 164 620 M424 380 C434 460 440 540 436 620' stroke={HAIR.hi} strokeWidth='2.2' fill='none' opacity='0.45' />
-      </g>
+      <path d='M176 316 C158 410 146 520 150 660 L192 660 C190 560 192 470 198 410 C190 380 184 350 182 322 Z' fill='url(#amb-hair)' />
+      <path d='M424 316 C442 410 454 520 450 660 L408 660 C410 560 408 470 402 410 C410 380 416 350 418 322 Z' fill='url(#amb-hair)' />
+      <path d='M168 420 C160 490 156 570 160 640 M432 420 C440 490 444 570 440 640' stroke={HAIR.hi} strokeWidth='2.2' fill='none' opacity='0.45' />
     </svg>
   );
 }
