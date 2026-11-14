@@ -14,10 +14,13 @@ const TOP_Y = 1.9;
 const GLOW = '#ffd8c4';
 const ease = (t: number) => t * t * (3 - 2 * t);
 const clamp = (n: number, a = 0, b = 1) => Math.min(b, Math.max(a, n));
-
-// Native (default) keeps the GLB's own textures: eyes, hair, top and skin detail stay intact.
-// Set NEXT_PUBLIC_MODEL_STYLE=marble to opt in to the white-stone look (smooths geometry, drops textures).
 const MARBLE = process.env.NEXT_PUBLIC_MODEL_STYLE === 'marble';
+
+// Eye + hair tuning (fractions of the model's total height H, measured from the top of the head).
+const EYE = { y: 0.277, dx: 0.072, width: 0.1, iris: '#5b3a22' };
+const HAIR = { frontFrom: 0.15, frontTo: 0.075, backBelow: 0.4, iterations: 5 };
+const EYES_ON = process.env.NEXT_PUBLIC_EYES !== 'off';
+const HAIR_FIX_ON = process.env.NEXT_PUBLIC_HAIR_FIX !== 'off';
 
 function mixAt(p: number) {
   const f = clamp(p) * (N - 1);
@@ -32,6 +35,7 @@ class Boundary extends Component<{ children: ReactNode; fallback?: ReactNode }, 
   render() { return this.state.failed ? (this.props.fallback ?? null) : this.props.children; }
 }
 
+/* Full smoothing (marble mode only): welds vertices, drops UVs. */
 function smoothGeometry(src: THREE.BufferGeometry, iterations = 6): THREE.BufferGeometry {
   let g = src.clone();
   for (const k of Object.keys(g.attributes)) if (k !== 'position') g.deleteAttribute(k);
@@ -71,6 +75,106 @@ function smoothGeometry(src: THREE.BufferGeometry, iterations = 6): THREE.Buffer
   g.computeBoundingBox();
   g.computeBoundingSphere();
   return g;
+}
+
+/* Region smoothing that KEEPS UVs/textures and never opens seams:
+   vertices sharing a position move together; only vertices where weight(x,y,z) > 0 are smoothed. */
+function smoothRegion(src: THREE.BufferGeometry, weight: (x: number, y: number, z: number) => number, iterations: number): THREE.BufferGeometry {
+  const g = src.clone();
+  const pos = g.attributes.position as THREE.BufferAttribute;
+  const n = pos.count;
+  g.computeBoundingBox();
+  const diag = g.boundingBox ? g.boundingBox.getSize(new THREE.Vector3()).length() : 1;
+  const q = diag * 1e-6 || 1e-6;
+  const keyMap = new Map<string, number>();
+  const cid = new Int32Array(n);
+  const cpos: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const key = `${Math.round(x / q)},${Math.round(y / q)},${Math.round(z / q)}`;
+    let c = keyMap.get(key);
+    if (c === undefined) { c = cpos.length / 3; keyMap.set(key, c); cpos.push(x, y, z); }
+    cid[i] = c;
+  }
+  const C = cpos.length / 3;
+  const P = Float32Array.from(cpos);
+  const w = new Float32Array(C);
+  for (let c = 0; c < C; c++) w[c] = weight(P[c * 3], P[c * 3 + 1], P[c * 3 + 2]);
+  const idx = g.index;
+  const triCount = (idx ? idx.count : n) / 3;
+  const tri = (t: number, k: number) => cid[idx ? idx.getX(t * 3 + k) : t * 3 + k];
+  const nb: number[][] = Array.from({ length: C }, () => []);
+  for (let t = 0; t < triCount; t++) {
+    const a = tri(t, 0), b = tri(t, 1), c = tri(t, 2);
+    nb[a].push(b, c); nb[b].push(a, c); nb[c].push(a, b);
+  }
+  const T = new Float32Array(P.length);
+  const pass = (lam: number) => {
+    for (let c = 0; c < C; c++) {
+      const o = c * 3, list = nb[c];
+      if (!list.length || w[c] <= 0) { T[o] = P[o]; T[o + 1] = P[o + 1]; T[o + 2] = P[o + 2]; continue; }
+      let sx = 0, sy = 0, sz = 0;
+      for (const j of list) { sx += P[j * 3]; sy += P[j * 3 + 1]; sz += P[j * 3 + 2]; }
+      const k = (lam * w[c]) / list.length;
+      T[o] = P[o] + k * sx - lam * w[c] * P[o];
+      T[o + 1] = P[o + 1] + k * sy - lam * w[c] * P[o + 1];
+      T[o + 2] = P[o + 2] + k * sz - lam * w[c] * P[o + 2];
+    }
+    P.set(T);
+  };
+  for (let it = 0; it < iterations; it++) { pass(0.5); pass(-0.53); }
+  for (let i = 0; i < n; i++) pos.setXYZ(i, P[cid[i] * 3], P[cid[i] * 3 + 1], P[cid[i] * 3 + 2]);
+  pos.needsUpdate = true;
+  // averaged normals per welded position (soft shading, no speckle)
+  const cn = new Float32Array(C * 3);
+  const va = new THREE.Vector3(), vb = new THREE.Vector3(), vc = new THREE.Vector3(), fn = new THREE.Vector3();
+  for (let t = 0; t < triCount; t++) {
+    const ia = idx ? idx.getX(t * 3) : t * 3, ib = idx ? idx.getX(t * 3 + 1) : t * 3 + 1, ic = idx ? idx.getX(t * 3 + 2) : t * 3 + 2;
+    va.fromBufferAttribute(pos, ia); vb.fromBufferAttribute(pos, ib); vc.fromBufferAttribute(pos, ic);
+    fn.crossVectors(vb.sub(va), vc.sub(va));
+    for (const k of [0, 1, 2]) { const c = cid[[ia, ib, ic][k]]; cn[c * 3] += fn.x; cn[c * 3 + 1] += fn.y; cn[c * 3 + 2] += fn.z; }
+  }
+  let nrm = g.attributes.normal as THREE.BufferAttribute | undefined;
+  if (!nrm) { nrm = new THREE.BufferAttribute(new Float32Array(n * 3), 3); g.setAttribute('normal', nrm); }
+  for (let i = 0; i < n; i++) {
+    const o = cid[i] * 3;
+    const l = Math.hypot(cn[o], cn[o + 1], cn[o + 2]) || 1;
+    nrm.setXYZ(i, cn[o] / l, cn[o + 1] / l, cn[o + 2] / l);
+  }
+  nrm.needsUpdate = true;
+  g.computeBoundingBox();
+  g.computeBoundingSphere();
+  return g;
+}
+
+function eyeTexture(iris: string) {
+  const W = 512, H = 256;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d')!;
+  const almond = () => { g.beginPath(); g.moveTo(14, 138); g.quadraticCurveTo(256, -20, 498, 138); g.quadraticCurveTo(256, 252, 14, 138); g.closePath(); };
+  g.save(); almond(); g.clip();
+  const sc = g.createLinearGradient(0, 0, 0, H);
+  sc.addColorStop(0, '#d9d0c8'); sc.addColorStop(0.35, '#f7f2ec'); sc.addColorStop(1, '#efe6df');
+  g.fillStyle = sc; g.fillRect(0, 0, W, H);
+  const ir = g.createRadialGradient(256, 128, 8, 256, 128, 92);
+  ir.addColorStop(0, '#7a4b28'); ir.addColorStop(0.55, iris); ir.addColorStop(1, '#1f1008');
+  g.fillStyle = ir; g.beginPath(); g.arc(256, 130, 92, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#0a0604'; g.beginPath(); g.arc(256, 130, 36, 0, Math.PI * 2); g.fill();
+  g.fillStyle = 'rgba(255,255,255,0.95)'; g.beginPath(); g.arc(292, 94, 15, 0, Math.PI * 2); g.fill();
+  g.fillStyle = 'rgba(255,255,255,0.45)'; g.beginPath(); g.arc(226, 168, 8, 0, Math.PI * 2); g.fill();
+  const lid = g.createLinearGradient(0, 0, 0, 120);
+  lid.addColorStop(0, 'rgba(30,15,8,0.55)'); lid.addColorStop(1, 'rgba(30,15,8,0)');
+  g.fillStyle = lid; g.fillRect(0, 0, W, 120);
+  g.restore();
+  g.strokeStyle = '#1a0d07'; g.lineWidth = 11; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(14, 138); g.quadraticCurveTo(256, -20, 498, 138); g.stroke();
+  g.strokeStyle = 'rgba(60,30,20,0.35)'; g.lineWidth = 5;
+  g.beginPath(); g.moveTo(40, 150); g.quadraticCurveTo(256, 246, 470, 150); g.stroke();
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
 }
 
 /* ---------- Portrait fallback ---------- */
@@ -166,6 +270,11 @@ function Woman({ progress }: { progress: Progress }) {
   const tmp = useMemo(() => ({ c: new THREE.Color(), c2: new THREE.Color(), q: new THREE.Quaternion(), e: new THREE.Euler(), marble: new THREE.Color(MARBLE_COLOR), skin: new THREE.Color(SKIN_COLOR) }), []);
 
   const rig = useMemo(() => {
+    scene.updateMatrixWorld(true);
+    let box = new THREE.Box3().setFromObject(scene);
+    let size = box.getSize(new THREE.Vector3());
+    const H0 = size.y, top0 = box.max.y, cx0 = (box.min.x + box.max.x) / 2, cz0 = (box.min.z + box.max.z) / 2;
+
     if (MARBLE) {
       scene.traverse((o) => {
         const m = o as THREE.Mesh;
@@ -173,18 +282,36 @@ function Woman({ progress }: { progress: Progress }) {
         m.geometry = smoothGeometry(m.geometry);
         m.userData.smoothed = true;
       });
+    } else if (HAIR_FIX_ON) {
+      const smoothstep = (a: number, b: number, x: number) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+      const weight = (x: number, y: number, z: number) => {
+        const d = (top0 - y) / H0; // depth below top of head, as fraction of H
+        const crown = 1 - smoothstep(HAIR.frontTo, HAIR.frontFrom, d); // top of head, fades out toward the forehead
+        const back = z < cz0 - 0.02 * H0 ? 1 - smoothstep(HAIR.backBelow - 0.08, HAIR.backBelow, d) : 0; // bun / back of head
+        return clamp(Math.max(crown, back));
+      };
+      scene.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh || (m as THREE.SkinnedMesh).isSkinnedMesh || m.userData.hairFixed) return;
+        m.geometry = smoothRegion(m.geometry, weight, HAIR.iterations);
+        m.userData.hairFixed = true;
+      });
     }
+
     scene.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(scene);
-    const size = box.getSize(new THREE.Vector3());
+    box = new THREE.Box3().setFromObject(scene);
+    size = box.getSize(new THREE.Vector3());
+    const H = size.y;
+    const top = box.max.y;
     const ratio = size.y / Math.max(size.x, size.z, 0.0001);
     const full = CROP_MODE === 'always' || (CROP_MODE === 'auto' && ratio > 1.8);
     const bottom = full ? box.min.y + size.y * 0.68 : box.min.y;
     const s = (TOP_Y - CUT_Y) / Math.max(box.max.y - bottom, 0.0001);
-    const cx = (box.min.x + box.max.x) / 2;
-    const cz = (box.min.z + box.max.z) / 2;
+    const cx = cx0, cz = (box.min.z + box.max.z) / 2;
+
     const mats: MatRec[] = [];
     const blink: BlinkRec[] = [];
+    const meshes: THREE.Mesh[] = [];
     const bones: { head?: THREE.Object3D; neck?: THREE.Object3D; spine?: THREE.Object3D } = {};
     scene.traverse((o) => {
       const n = o.name.replace(/^mixamorig:?/i, '');
@@ -193,6 +320,7 @@ function Woman({ progress }: { progress: Progress }) {
       else if (/^spine2?$/i.test(n) && !bones.spine) bones.spine = o;
       const m = o as THREE.Mesh;
       if (!m.isMesh) return;
+      if (!m.userData.isEye) meshes.push(m);
       m.frustumCulled = false;
       const dict = m.morphTargetDictionary;
       if (dict && m.morphTargetInfluences) {
@@ -223,8 +351,39 @@ function Woman({ progress }: { progress: Progress }) {
       });
       m.material = Array.isArray(m.material) ? next : next[0];
     });
+
+    // Real eyes: the scan only has dark painted sockets, so place eye decals on the face surface.
+    const eyes: THREE.Mesh[] = [];
+    if (EYES_ON && !MARBLE) {
+      const ray = new THREE.Raycaster();
+      const tex = eyeTexture(EYE.iris);
+      const ey = top - EYE.y * H;
+      const D = size.z * 2 + 1;
+      for (const sx of [-1, 1]) {
+        const ex = cx + sx * EYE.dx * H;
+        for (const dir of [1, -1]) {
+          ray.set(new THREE.Vector3(ex, ey, cz + dir * D), new THREE.Vector3(0, 0, -dir));
+          const hit = ray.intersectObjects(meshes, false)[0];
+          if (!hit) continue;
+          const nrm = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld) : new THREE.Vector3(0, 0, dir);
+          const n = nrm.multiplyScalar(0.4).add(new THREE.Vector3(0, 0, dir * 0.6)).normalize();
+          const w = EYE.width * H;
+          const mat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.2, metalness: 0, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, side: THREE.DoubleSide });
+          const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, w * 0.5), mat);
+          mesh.userData.isEye = true;
+          mesh.position.copy(hit.point).addScaledVector(n, 0.002 * H);
+          mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+          mesh.rotateZ(sx * 0.05);
+          mesh.frustumCulled = false;
+          scene.add(mesh);
+          eyes.push(mesh);
+          break;
+        }
+      }
+    }
+
     const base = { head: bones.head?.quaternion.clone(), neck: bones.neck?.quaternion.clone(), spine: bones.spine?.quaternion.clone() };
-    return { s, ox: -cx * s, oy: CUT_Y - bottom * s, oz: -cz * s, mats, blink, bones, base };
+    return { s, ox: -cx * s, oy: CUT_Y - bottom * s, oz: -cz * s, mats, blink, bones, base, eyes };
   }, [scene, plane]);
 
   useFrame((state) => {
@@ -251,6 +410,7 @@ function Woman({ progress }: { progress: Progress }) {
       if (u >= 1) { bs.start = -1; bs.next = t + 2.5 + Math.random() * 3.5; } else w = Math.sin(Math.PI * u);
     }
     for (const r of rig.blink) for (const ix of r.idx) if (r.mesh.morphTargetInfluences) r.mesh.morphTargetInfluences[ix] = w;
+    for (const e of rig.eyes) e.scale.y = 1 - w * 0.92;
 
     tmp.c.set(a.tint).lerp(tmp.c2.set(b.tint), k);
     const glow = a.glow + (b.glow - a.glow) * k;
@@ -264,10 +424,9 @@ function Woman({ progress }: { progress: Progress }) {
         r.mat.emissiveIntensity = glow * 0.35 * warm;
         (r.mat as THREE.MeshPhysicalMaterial).clearcoat = 0.2 + glow * 1.2;
       } else {
-        // keep textures untouched; only a soft stage tint, dewy roughness and an inner glow that follows the texture
         r.mat.color.copy(r.color).lerp(tmp.c, 0.05);
-        r.mat.roughness = Math.min(r.rough, 0.9) * (1 - glow * 0.9);
-        r.mat.emissiveIntensity = glow * 0.3;
+        r.mat.roughness = Math.min(r.rough, 0.9) * (1 - glow * 0.6);
+        r.mat.emissiveIntensity = glow * 0.22;
       }
     }
   });
