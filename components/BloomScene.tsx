@@ -3,7 +3,7 @@ import { Component, MutableRefObject, ReactNode, Suspense, useMemo, useRef } fro
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Environment, Lightformer, Sparkles, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
-import { CROP_MODE, MODEL_URL, PORTRAIT_URL, STAGES } from '@/config/hero';
+import { CROP_MODE, MARBLE_COLOR, MODEL_STYLE, MODEL_URL, PORTRAIT_URL, SKIN_COLOR, STAGES, USE_PORTRAIT } from '@/config/hero';
 
 type Progress = MutableRefObject<number>;
 
@@ -20,14 +20,14 @@ function mixAt(p: number) {
   return { i, a: STAGES[i], b: STAGES[i + 1], t: ease(f - i), f };
 }
 
-class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+class Boundary extends Component<{ children: ReactNode; fallback?: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
-  componentDidCatch(e: unknown) { console.warn('[BloomHero] asset failed to load', e); }
-  render() { return this.state.failed ? null : this.props.children; }
+  componentDidCatch(e: unknown) { console.warn('[BloomHero] asset failed to load, using fallback', e); }
+  render() { return this.state.failed ? (this.props.fallback ?? null) : this.props.children; }
 }
 
-/* ---------- Portrait (default) ---------- */
+/* ---------- Portrait fallback ---------- */
 function archTexture() {
   const w = 512, h = 680;
   const c = document.createElement('canvas');
@@ -63,8 +63,7 @@ function Portrait({ progress }: { progress: Progress }) {
     new THREE.TextureLoader().load(PORTRAIT_URL, (tex) => {
       tex.colorSpace = THREE.SRGBColorSpace;
       const imgAspect = tex.image.width / tex.image.height;
-      const want = W / H;
-      const rx = Math.min(1, want / imgAspect);
+      const rx = Math.min(1, W / H / imgAspect);
       tex.repeat.set(rx, 1);
       tex.offset.set((1 - rx) / 2, 0);
       m.map = tex; m.needsUpdate = true;
@@ -80,9 +79,8 @@ function Portrait({ progress }: { progress: Progress }) {
     const g = group.current;
     if (g) {
       const swing = Math.sin(Math.PI * k) * 0.55 * (i % 2 ? -1 : 1);
-      const tx = state.pointer.x * 0.18, ty = -state.pointer.y * 0.08;
-      g.rotation.y += (swing + tx - g.rotation.y) * 0.08;
-      g.rotation.x += (ty + Math.sin(t * 0.5) * 0.015 - g.rotation.x) * 0.08;
+      g.rotation.y += (swing + state.pointer.x * 0.18 - g.rotation.y) * 0.08;
+      g.rotation.x += (-state.pointer.y * 0.08 + Math.sin(t * 0.5) * 0.015 - g.rotation.x) * 0.08;
       g.position.y = 1.15 + Math.sin(t * 0.9) * 0.025;
       g.scale.setScalar(1 + Math.sin(t * 1.6) * 0.005);
     }
@@ -108,8 +106,8 @@ function Portrait({ progress }: { progress: Progress }) {
   );
 }
 
-/* ---------- Optional GLB character ---------- */
-type MatRec = { mat: THREE.MeshStandardMaterial; color: THREE.Color; rough: number; skin: boolean };
+/* ---------- GLB character (marble -> skin) ---------- */
+type MatRec = { mat: THREE.MeshStandardMaterial; color: THREE.Color; skin: boolean };
 type BlinkRec = { mesh: THREE.Mesh; idx: number[] };
 const BLINK_KEYS = ['eyeBlinkLeft', 'eyeBlinkRight', 'eyesClosed', 'blink', 'Blink', 'eyeBlink_L', 'eyeBlink_R', 'Eye_Blink_L', 'Eye_Blink_R'];
 
@@ -119,7 +117,8 @@ function Woman({ progress }: { progress: Progress }) {
   const { scene } = useGLTF(MODEL_URL);
   const plane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), -CUT_Y), []);
   const blinkState = useRef({ next: 2.5, start: -1 });
-  const tmp = useMemo(() => ({ c: new THREE.Color(), c2: new THREE.Color(), q: new THREE.Quaternion(), e: new THREE.Euler() }), []);
+  const tmp = useMemo(() => ({ c: new THREE.Color(), c2: new THREE.Color(), q: new THREE.Quaternion(), e: new THREE.Euler(), marble: new THREE.Color(MARBLE_COLOR), skin: new THREE.Color(SKIN_COLOR) }), []);
+  const marble = MODEL_STYLE === 'marble';
 
   const rig = useMemo(() => {
     scene.updateMatrixWorld(true);
@@ -150,33 +149,39 @@ function Woman({ progress }: { progress: Progress }) {
       const arr = Array.isArray(m.material) ? m.material : [m.material];
       const next = arr.map((mt) => {
         const old = mt as THREE.MeshStandardMaterial;
-        if (!old.isMeshStandardMaterial) return mt;
-        const skin = /skin|body|head|face|arm|neck|torso|hand/i.test(`${old.name} ${m.name}`);
-        let out: THREE.MeshStandardMaterial = old;
-        if (skin) {
+        let out: THREE.MeshStandardMaterial;
+        let skin = false;
+        if (marble) {
           const p = new THREE.MeshPhysicalMaterial({
-            map: old.map, normalMap: old.normalMap, roughnessMap: old.roughnessMap, aoMap: old.aoMap,
-            color: old.color.clone(), roughness: Math.min(old.roughness, 0.62), metalness: 0,
-            sheen: 0.6, sheenColor: new THREE.Color('#ff9f80'), sheenRoughness: 0.45, clearcoat: 0, clearcoatRoughness: 0.35,
+            color: new THREE.Color(MARBLE_COLOR), roughness: 0.5, metalness: 0,
+            normalMap: old.normalMap ?? null, sheen: 0.4, sheenColor: new THREE.Color('#ffd9c8'), sheenRoughness: 0.5,
+            clearcoat: 0.2, clearcoatRoughness: 0.4, side: THREE.DoubleSide, vertexColors: false,
           });
-          p.normalScale.copy(old.normalScale);
-          out = p;
-        }
+          if (old.normalScale) p.normalScale.copy(old.normalScale);
+          out = p; skin = true;
+        } else if (old.isMeshStandardMaterial) {
+          skin = /skin|body|head|face|arm|neck|torso|hand/i.test(`${old.name} ${m.name}`);
+          out = old;
+        } else return mt;
         if (full) { out.clippingPlanes = [plane]; out.clipShadows = true; }
-        mats.push({ mat: out, color: out.color.clone(), rough: out.roughness, skin });
+        mats.push({ mat: out, color: out.color.clone(), skin });
         return out;
       });
       m.material = Array.isArray(m.material) ? next : next[0];
     });
     const base = { head: bones.head?.quaternion.clone(), neck: bones.neck?.quaternion.clone(), spine: bones.spine?.quaternion.clone() };
     return { s, ox: -cx * s, oy: CUT_Y - bottom * s, oz: -cz * s, mats, blink, bones, base };
-  }, [scene, plane]);
+  }, [scene, plane, marble]);
 
   useFrame((state) => {
     const t = state.clock.elapsedTime;
-    const { i, a, b, t: k } = mixAt(progress.current);
+    const p = progress.current;
+    const { i, a, b, t: k } = mixAt(p);
     if (yaw.current) yaw.current.rotation.y = (i + k) * Math.PI * 2;
-    if (body.current) body.current.scale.setScalar(rig.s * (1 + Math.sin(t * 1.6) * 0.0035));
+    if (body.current) {
+      body.current.scale.setScalar(rig.s * (1 + Math.sin(t * 1.6) * 0.0035));
+      if (!rig.bones.head) { body.current.rotation.z = Math.sin(t * 0.5) * 0.012; body.current.rotation.x = Math.sin(t * 0.4) * 0.01; }
+    }
     const sway = (bone: THREE.Object3D | undefined, base: THREE.Quaternion | undefined, x: number, y: number, z: number) => {
       if (!bone || !base) return;
       bone.quaternion.copy(base).multiply(tmp.q.setFromEuler(tmp.e.set(x, y, z)));
@@ -192,17 +197,27 @@ function Woman({ progress }: { progress: Progress }) {
       if (u >= 1) { bs.start = -1; bs.next = t + 2.5 + Math.random() * 3.5; } else w = Math.sin(Math.PI * u);
     }
     for (const r of rig.blink) for (const ix of r.idx) if (r.mesh.morphTargetInfluences) r.mesh.morphTargetInfluences[ix] = w;
+
     tmp.c.set(a.tint).lerp(tmp.c2.set(b.tint), k);
     const glow = a.glow + (b.glow - a.glow) * k;
     const rough = a.roughness + (b.roughness - a.roughness) * k;
+    const warm = ease(clamp(p * 1.15));
     for (const r of rig.mats) {
-      r.mat.color.copy(r.color).lerp(tmp.c, r.skin ? 0.06 : 0.05);
-      if (r.skin) {
-        r.mat.roughness = 0.25 + rough * 0.4;
+      if (marble) {
+        r.mat.color.copy(tmp.marble).lerp(tmp.skin, warm * 0.9).lerp(tmp.c, 0.06);
+        r.mat.roughness = 0.55 - warm * 0.22 + (rough - 0.5) * 0.1;
         r.mat.emissive.copy(WARM);
-        r.mat.emissiveIntensity = glow * 0.45;
-        const phys = r.mat as THREE.MeshPhysicalMaterial;
-        if (phys.isMeshPhysicalMaterial) phys.clearcoat = glow * 1.4;
+        r.mat.emissiveIntensity = glow * 0.35 * warm;
+        (r.mat as THREE.MeshPhysicalMaterial).clearcoat = 0.2 + glow * 1.2;
+      } else {
+        r.mat.color.copy(r.color).lerp(tmp.c, r.skin ? 0.06 : 0.05);
+        if (r.skin) {
+          r.mat.roughness = 0.25 + rough * 0.4;
+          r.mat.emissive.copy(WARM);
+          r.mat.emissiveIntensity = glow * 0.45;
+          const phys = r.mat as THREE.MeshPhysicalMaterial;
+          if (phys.isMeshPhysicalMaterial) phys.clearcoat = glow * 1.4;
+        }
       }
     }
   });
@@ -294,13 +309,18 @@ export default function BloomScene({ progress, auraColor }: { progress: Progress
     >
       <ambientLight intensity={0.5} color='#fff1e6' />
       <directionalLight position={[2.5, 4, 4]} intensity={1.5} color='#fff4ea' />
+      <directionalLight position={[-3, 2, -2]} intensity={0.7} color='#ffd9c2' />
       <Rig progress={progress} />
       <Suspense fallback={null}>
         <Environment resolution={256}>
           <Lightformer form='rect' intensity={2.2} color='#fff3e8' position={[0, 4, 3]} scale={[8, 4, 1]} />
           <Lightformer form='rect' intensity={1} color='#ffe0cc' position={[-4, 1, -2]} scale={[3, 6, 1]} />
         </Environment>
-        <Boundary>{MODEL_URL ? <Woman progress={progress} /> : <Portrait progress={progress} />}</Boundary>
+        {USE_PORTRAIT ? (
+          <Portrait progress={progress} />
+        ) : (
+          <Boundary fallback={<Portrait progress={progress} />}><Woman progress={progress} /></Boundary>
+        )}
         <Ring progress={progress} />
         <Sparkles count={50} scale={[5, 3, 5]} position={[0, 1.3, 0]} size={3} speed={0.4} color={auraColor} />
       </Suspense>

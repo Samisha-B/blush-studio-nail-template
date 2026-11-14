@@ -1,12 +1,18 @@
 // Hero config.
 //
-// DEFAULT: a photoreal portrait at /public/images/ambassador.jpg is shown as an arch-shaped panel
-// floating in the 3D scene (breathing, parallax, scroll swing, per-stage glow).
+// DEFAULT: loads /public/models/woman.glb. If it fails to load, the hero falls back to the
+// portrait at /public/images/ambassador.jpg.
 //
-// OPTIONAL 3D: set NEXT_PUBLIC_MODEL_URL (e.g. /models/woman.glb) to render a GLB instead.
-// NEXT_PUBLIC_MODEL_CROP = 'auto' | 'always' | 'never' controls the mid-chest cut for full-body GLBs.
-export const MODEL_URL: string = process.env.NEXT_PUBLIC_MODEL_URL || '';
+// NEXT_PUBLIC_MODEL_URL    override the GLB path/URL
+// NEXT_PUBLIC_MODEL_STYLE  'marble' (default: white stone that warms into skin as you scroll) | 'native' (keep the GLB's own materials)
+// NEXT_PUBLIC_MODEL_CROP   'auto' | 'always' | 'never' (mid-chest cut for full-body meshes)
+// NEXT_PUBLIC_USE_PORTRAIT '1' to force the portrait instead of the GLB
+export const MODEL_URL: string = process.env.NEXT_PUBLIC_MODEL_URL || '/models/woman.glb';
 export const PORTRAIT_URL: string = process.env.NEXT_PUBLIC_PORTRAIT_URL || '/images/ambassador.jpg';
+export const USE_PORTRAIT: boolean = process.env.NEXT_PUBLIC_USE_PORTRAIT === '1';
+export const MODEL_STYLE: 'marble' | 'native' = process.env.NEXT_PUBLIC_MODEL_STYLE === 'native' ? 'native' : 'marble';
+export const MARBLE_COLOR = '#eceef3';
+export const SKIN_COLOR = '#b98260';
 
 export type CropMode = 'auto' | 'always' | 'never';
 const rawCrop = process.env.NEXT_PUBLIC_MODEL_CROP;
