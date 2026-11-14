@@ -3,8 +3,9 @@ import dynamic from 'next/dynamic';
 import { useEffect, useRef, useState } from 'react';
 import { site } from '@/config/site';
 import { STAGES } from '@/config/hero';
+import Ambassador from './Ambassador';
 
-const BloomScene = dynamic(() => import('./BloomScene'), { ssr: false });
+const BloomOrbit = dynamic(() => import('./BloomOrbit'), { ssr: false });
 const clamp = (n: number, a = 0, b = 1) => Math.min(b, Math.max(a, n));
 
 export default function BloomHero() {
@@ -39,10 +40,14 @@ export default function BloomHero() {
         <div className='bh-grid absolute inset-0' />
         <h1 className='pointer-events-none absolute inset-x-0 top-[18%] z-0 select-none text-center font-serif text-[22vw] leading-none text-espresso/10 md:text-[16vw]'>{site.brand.name.split(' ')[0]}</h1>
 
-        <div className='absolute inset-0 z-10'>
-          <BloomScene progress={progress} auraColor={s.aura} />
+        <div className='absolute inset-0 z-[5]'>
+          <BloomOrbit progress={progress} auraColor={s.aura} />
         </div>
-        <div className='pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[28%] transition-[background] duration-700' style={{ background: `linear-gradient(to top, ${s.bg[1]} 25%, transparent)` }} />
+
+        <div className='pointer-events-none absolute inset-x-0 bottom-0 z-10 flex h-[88%] justify-center pt-24'>
+          <Ambassador progress={progress} stage={idx} />
+        </div>
+        <div className='pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[16%] transition-[background] duration-700' style={{ background: `linear-gradient(to top, ${s.bg[1]} 20%, transparent)` }} />
 
         <div className='pointer-events-none absolute left-6 top-28 z-20 max-w-xs md:left-12'>
           <p className='eyebrow'>Step {String(idx + 1).padStart(2, '0')} / {String(STAGES.length).padStart(2, '0')}</p>
