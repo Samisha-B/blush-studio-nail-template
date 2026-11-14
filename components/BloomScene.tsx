@@ -4,16 +4,20 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { Environment, Lightformer, Sparkles, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { CROP_MODE, MARBLE_COLOR, MODEL_STYLE, MODEL_URL, PORTRAIT_URL, SKIN_COLOR, STAGES, USE_PORTRAIT } from '@/config/hero';
+import { CROP_MODE, MARBLE_COLOR, MODEL_URL, PORTRAIT_URL, SKIN_COLOR, STAGES, USE_PORTRAIT } from '@/config/hero';
 
 type Progress = MutableRefObject<number>;
 
 const N = STAGES.length;
 const CUT_Y = 0.35;
 const TOP_Y = 1.9;
-const WARM = new THREE.Color('#8a3d24');
+const GLOW = '#ffd8c4';
 const ease = (t: number) => t * t * (3 - 2 * t);
 const clamp = (n: number, a = 0, b = 1) => Math.min(b, Math.max(a, n));
+
+// Native (default) keeps the GLB's own textures: eyes, hair, top and skin detail stay intact.
+// Set NEXT_PUBLIC_MODEL_STYLE=marble to opt in to the white-stone look (smooths geometry, drops textures).
+const MARBLE = process.env.NEXT_PUBLIC_MODEL_STYLE === 'marble';
 
 function mixAt(p: number) {
   const f = clamp(p) * (N - 1);
@@ -28,7 +32,6 @@ class Boundary extends Component<{ children: ReactNode; fallback?: ReactNode }, 
   render() { return this.state.failed ? (this.props.fallback ?? null) : this.props.children; }
 }
 
-/* Weld vertices, Taubin-smooth the surface (no shrinkage), recompute soft normals. */
 function smoothGeometry(src: THREE.BufferGeometry, iterations = 6): THREE.BufferGeometry {
   let g = src.clone();
   for (const k of Object.keys(g.attributes)) if (k !== 'position') g.deleteAttribute(k);
@@ -149,8 +152,8 @@ function Portrait({ progress }: { progress: Progress }) {
   );
 }
 
-/* ---------- GLB character (marble -> skin) ---------- */
-type MatRec = { mat: THREE.MeshStandardMaterial; color: THREE.Color; skin: boolean };
+/* ---------- GLB character ---------- */
+type MatRec = { mat: THREE.MeshStandardMaterial; color: THREE.Color; rough: number };
 type BlinkRec = { mesh: THREE.Mesh; idx: number[] };
 const BLINK_KEYS = ['eyeBlinkLeft', 'eyeBlinkRight', 'eyesClosed', 'blink', 'Blink', 'eyeBlink_L', 'eyeBlink_R', 'Eye_Blink_L', 'Eye_Blink_R'];
 
@@ -161,10 +164,9 @@ function Woman({ progress }: { progress: Progress }) {
   const plane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), -CUT_Y), []);
   const blinkState = useRef({ next: 2.5, start: -1 });
   const tmp = useMemo(() => ({ c: new THREE.Color(), c2: new THREE.Color(), q: new THREE.Quaternion(), e: new THREE.Euler(), marble: new THREE.Color(MARBLE_COLOR), skin: new THREE.Color(SKIN_COLOR) }), []);
-  const marble = MODEL_STYLE === 'marble';
 
   const rig = useMemo(() => {
-    if (marble) {
+    if (MARBLE) {
       scene.traverse((o) => {
         const m = o as THREE.Mesh;
         if (!m.isMesh || (m as THREE.SkinnedMesh).isSkinnedMesh || m.userData.smoothed) return;
@@ -201,28 +203,29 @@ function Woman({ progress }: { progress: Progress }) {
       const next = arr.map((mt) => {
         const old = mt as THREE.MeshStandardMaterial;
         let out: THREE.MeshStandardMaterial;
-        let skin = false;
-        if (marble) {
-          const smoothed = !!m.userData.smoothed;
+        if (MARBLE) {
           out = new THREE.MeshPhysicalMaterial({
             color: new THREE.Color(MARBLE_COLOR), roughness: 0.5, metalness: 0,
-            normalMap: smoothed ? null : (old.normalMap ?? null), sheen: 0.5, sheenColor: new THREE.Color('#ffc9b0'), sheenRoughness: 0.5,
-            clearcoat: 0.2, clearcoatRoughness: 0.4, side: THREE.DoubleSide, vertexColors: false, flatShading: false,
+            sheen: 0.5, sheenColor: new THREE.Color('#ffc9b0'), sheenRoughness: 0.5,
+            clearcoat: 0.2, clearcoatRoughness: 0.4, side: THREE.DoubleSide,
           });
-          skin = true;
         } else if (old.isMeshStandardMaterial) {
-          skin = /skin|body|head|face|arm|neck|torso|hand/i.test(`${old.name} ${m.name}`);
           out = old;
+          out.side = THREE.DoubleSide;
+          if (old.map) { old.map.anisotropy = 8; out.emissiveMap = old.map; }
+          out.emissive = new THREE.Color(GLOW);
+          out.emissiveIntensity = 0;
+          out.needsUpdate = true;
         } else return mt;
         if (full) { out.clippingPlanes = [plane]; out.clipShadows = true; }
-        mats.push({ mat: out, color: out.color.clone(), skin });
+        mats.push({ mat: out, color: out.color.clone(), rough: out.roughness });
         return out;
       });
       m.material = Array.isArray(m.material) ? next : next[0];
     });
     const base = { head: bones.head?.quaternion.clone(), neck: bones.neck?.quaternion.clone(), spine: bones.spine?.quaternion.clone() };
     return { s, ox: -cx * s, oy: CUT_Y - bottom * s, oz: -cz * s, mats, blink, bones, base };
-  }, [scene, plane, marble]);
+  }, [scene, plane]);
 
   useFrame((state) => {
     const t = state.clock.elapsedTime;
@@ -254,21 +257,17 @@ function Woman({ progress }: { progress: Progress }) {
     const rough = a.roughness + (b.roughness - a.roughness) * k;
     const warm = ease(clamp(p * 1.15));
     for (const r of rig.mats) {
-      if (marble) {
+      if (MARBLE) {
         r.mat.color.copy(tmp.marble).lerp(tmp.skin, warm * 0.9).lerp(tmp.c, 0.06);
         r.mat.roughness = 0.55 - warm * 0.22 + (rough - 0.5) * 0.1;
-        r.mat.emissive.copy(WARM);
+        r.mat.emissive.set('#8a3d24');
         r.mat.emissiveIntensity = glow * 0.35 * warm;
         (r.mat as THREE.MeshPhysicalMaterial).clearcoat = 0.2 + glow * 1.2;
       } else {
-        r.mat.color.copy(r.color).lerp(tmp.c, r.skin ? 0.06 : 0.05);
-        if (r.skin) {
-          r.mat.roughness = 0.25 + rough * 0.4;
-          r.mat.emissive.copy(WARM);
-          r.mat.emissiveIntensity = glow * 0.45;
-          const phys = r.mat as THREE.MeshPhysicalMaterial;
-          if (phys.isMeshPhysicalMaterial) phys.clearcoat = glow * 1.4;
-        }
+        // keep textures untouched; only a soft stage tint, dewy roughness and an inner glow that follows the texture
+        r.mat.color.copy(r.color).lerp(tmp.c, 0.05);
+        r.mat.roughness = Math.min(r.rough, 0.9) * (1 - glow * 0.9);
+        r.mat.emissiveIntensity = glow * 0.3;
       }
     }
   });
@@ -359,8 +358,8 @@ export default function BloomScene({ progress, auraColor }: { progress: Progress
       gl={{ alpha: true, antialias: true }}
       onCreated={({ gl }) => { gl.localClippingEnabled = true; gl.toneMapping = THREE.ACESFilmicToneMapping; gl.toneMappingExposure = 1.05; }}
     >
-      <ambientLight intensity={0.5} color='#fff1e6' />
-      <directionalLight position={[2.5, 4, 4]} intensity={1.5} color='#fff4ea' />
+      <ambientLight intensity={0.6} color='#fff1e6' />
+      <directionalLight position={[2.5, 4, 4]} intensity={1.4} color='#fff4ea' />
       <directionalLight position={[-3, 2, -2]} intensity={0.7} color='#ffd9c2' />
       <Rig progress={progress} />
       <Suspense fallback={null}>
