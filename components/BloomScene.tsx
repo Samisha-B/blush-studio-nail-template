@@ -3,6 +3,7 @@ import { Component, MutableRefObject, ReactNode, Suspense, useMemo, useRef } fro
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Environment, Lightformer, Sparkles, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CROP_MODE, MARBLE_COLOR, MODEL_STYLE, MODEL_URL, PORTRAIT_URL, SKIN_COLOR, STAGES, USE_PORTRAIT } from '@/config/hero';
 
 type Progress = MutableRefObject<number>;
@@ -25,6 +26,48 @@ class Boundary extends Component<{ children: ReactNode; fallback?: ReactNode }, 
   static getDerivedStateFromError() { return { failed: true }; }
   componentDidCatch(e: unknown) { console.warn('[BloomHero] asset failed to load, using fallback', e); }
   render() { return this.state.failed ? (this.props.fallback ?? null) : this.props.children; }
+}
+
+/* Weld vertices, Taubin-smooth the surface (no shrinkage), recompute soft normals. */
+function smoothGeometry(src: THREE.BufferGeometry, iterations = 6): THREE.BufferGeometry {
+  let g = src.clone();
+  for (const k of Object.keys(g.attributes)) if (k !== 'position') g.deleteAttribute(k);
+  g.morphAttributes = {};
+  g.computeBoundingBox();
+  const diag = g.boundingBox ? g.boundingBox.getSize(new THREE.Vector3()).length() : 1;
+  g = mergeVertices(g, diag * 1e-4);
+  const pos = g.attributes.position as THREE.BufferAttribute;
+  const idx = g.index;
+  if (!idx) { g.computeVertexNormals(); return g; }
+  const n = pos.count;
+  const nb: number[][] = Array.from({ length: n }, () => []);
+  const ia = idx.array;
+  for (let i = 0; i < ia.length; i += 3) {
+    const a = ia[i], b = ia[i + 1], c = ia[i + 2];
+    nb[a].push(b, c); nb[b].push(a, c); nb[c].push(a, b);
+  }
+  const p = pos.array as Float32Array;
+  const tmp = new Float32Array(p.length);
+  const pass = (lam: number) => {
+    for (let v = 0; v < n; v++) {
+      const list = nb[v];
+      const o = v * 3;
+      if (!list.length) { tmp[o] = p[o]; tmp[o + 1] = p[o + 1]; tmp[o + 2] = p[o + 2]; continue; }
+      let sx = 0, sy = 0, sz = 0;
+      for (const j of list) { sx += p[j * 3]; sy += p[j * 3 + 1]; sz += p[j * 3 + 2]; }
+      const k = 1 / list.length;
+      tmp[o] = p[o] + lam * (sx * k - p[o]);
+      tmp[o + 1] = p[o + 1] + lam * (sy * k - p[o + 1]);
+      tmp[o + 2] = p[o + 2] + lam * (sz * k - p[o + 2]);
+    }
+    p.set(tmp);
+  };
+  for (let it = 0; it < iterations; it++) { pass(0.5); pass(-0.53); }
+  pos.needsUpdate = true;
+  g.computeVertexNormals();
+  g.computeBoundingBox();
+  g.computeBoundingSphere();
+  return g;
 }
 
 /* ---------- Portrait fallback ---------- */
@@ -121,6 +164,14 @@ function Woman({ progress }: { progress: Progress }) {
   const marble = MODEL_STYLE === 'marble';
 
   const rig = useMemo(() => {
+    if (marble) {
+      scene.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh || (m as THREE.SkinnedMesh).isSkinnedMesh || m.userData.smoothed) return;
+        m.geometry = smoothGeometry(m.geometry);
+        m.userData.smoothed = true;
+      });
+    }
     scene.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(scene);
     const size = box.getSize(new THREE.Vector3());
@@ -152,13 +203,13 @@ function Woman({ progress }: { progress: Progress }) {
         let out: THREE.MeshStandardMaterial;
         let skin = false;
         if (marble) {
-          const p = new THREE.MeshPhysicalMaterial({
+          const smoothed = !!m.userData.smoothed;
+          out = new THREE.MeshPhysicalMaterial({
             color: new THREE.Color(MARBLE_COLOR), roughness: 0.5, metalness: 0,
-            normalMap: old.normalMap ?? null, sheen: 0.4, sheenColor: new THREE.Color('#ffd9c8'), sheenRoughness: 0.5,
-            clearcoat: 0.2, clearcoatRoughness: 0.4, side: THREE.DoubleSide, vertexColors: false,
+            normalMap: smoothed ? null : (old.normalMap ?? null), sheen: 0.5, sheenColor: new THREE.Color('#ffc9b0'), sheenRoughness: 0.5,
+            clearcoat: 0.2, clearcoatRoughness: 0.4, side: THREE.DoubleSide, vertexColors: false, flatShading: false,
           });
-          if (old.normalScale) p.normalScale.copy(old.normalScale);
-          out = p; skin = true;
+          skin = true;
         } else if (old.isMeshStandardMaterial) {
           skin = /skin|body|head|face|arm|neck|torso|hand/i.test(`${old.name} ${m.name}`);
           out = old;
@@ -253,18 +304,19 @@ function Card({ index, progress }: { index: number; progress: Progress }) {
   const R = 2.7;
   const ang = (index * Math.PI * 2) / N;
   const mat = useMemo(() => {
-    const m = new THREE.MeshBasicMaterial({ map: makeTexture(st.product, st.aura), side: THREE.DoubleSide, toneMapped: false });
+    const m = new THREE.MeshBasicMaterial({ map: makeTexture(st.product, st.aura), toneMapped: false });
     new THREE.TextureLoader().load(st.image, (tex) => { tex.colorSpace = THREE.SRGBColorSpace; m.map = tex; m.needsUpdate = true; }, undefined, () => {});
     return m;
   }, [st]);
-  useFrame(() => {
+  useFrame((state) => {
     if (!ref.current) return;
     const f = progress.current * (N - 1);
     const act = Math.max(0, 1 - Math.abs(f - index));
     ref.current.scale.setScalar(0.8 + 0.25 * act);
+    ref.current.lookAt(state.camera.position.x * 0.5, ref.current.getWorldPosition(new THREE.Vector3()).y, state.camera.position.z);
   });
   return (
-    <mesh ref={ref} material={mat} position={[Math.sin(ang) * R, 1.15, Math.cos(ang) * R]} rotation={[0, ang, 0]}>
+    <mesh ref={ref} material={mat} position={[Math.sin(ang) * R, 1.15, Math.cos(ang) * R]}>
       <planeGeometry args={[0.6, 0.8]} />
     </mesh>
   );
